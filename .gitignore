@@ -30,6 +30,9 @@ CMakeScripts/
 Makefile
 CMakeUserPresets.json
 
+# Installer output
+installer_output/
+
 # OS
 Thumbs.db
 .DS_Store

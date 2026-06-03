@@ -9,6 +9,9 @@ int main(int argc, char *argv[])
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     QGuiApplication app(argc, argv);
+    QFont f = app.font();
+    f.setPointSizeF(f.pointSizeF() * 1.5);
+    app.setFont(f);
 
     qmlRegisterType<WebView2Item>("map_demo2024", 1, 0,  "WebView2");
 

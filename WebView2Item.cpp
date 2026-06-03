@@ -2,10 +2,16 @@
 #include <QQuickWindow>
 #include <QWindow>
 #include <QDir>
+#include <QStandardPaths>
 #include <QDebug>
 #include <QImage>
 #include <QBuffer>
 #include <cmath>
+
+static QString dataDir()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/map_demo2024");
+}
 
 static QString extractAmapKey(const QByteArray &html)
 {
@@ -244,7 +250,7 @@ void WebView2Item::setUrl(const QUrl &url)
 
 void WebView2Item::loadConfig()
 {
-    QString configPath = QCoreApplication::applicationDirPath() + QStringLiteral("/config.json");
+    QString configPath = dataDir() + QStringLiteral("/config.json");
     QFile f(configPath);
     if (f.open(QIODevice::ReadOnly)) {
         QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
@@ -256,14 +262,59 @@ void WebView2Item::loadConfig()
         f.close();
     } else {
         QJsonObject tmpl;
-        tmpl[QStringLiteral("amapJsKey")] = QStringLiteral("你的高德 JS API Key");
-        tmpl[QStringLiteral("amapWebKey")] = QStringLiteral("你的高德 Web Service Key");
+        tmpl[QStringLiteral("amapJsKey")] = QString();
+        tmpl[QStringLiteral("amapWebKey")] = QString();
         QFile outf(configPath);
         if (outf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             outf.write(QJsonDocument(tmpl).toJson(QJsonDocument::Indented));
             outf.close();
         }
     }
+}
+
+bool WebView2Item::cxxIsConfigValid()
+{
+    return !m_configJsKey.isEmpty() && !m_webServiceKey.isEmpty()
+        && m_configJsKey != QStringLiteral("你的高德 JS API Key")
+        && m_webServiceKey != QStringLiteral("你的高德 Web Service Key");
+}
+
+QString WebView2Item::cxxSaveConfig(const QString &domain, const QString &jsKey, const QString &webKey)
+{
+    QString configPath = dataDir() + QStringLiteral("/config.json");
+    QJsonObject obj;
+    if (!domain.isEmpty()) obj[QStringLiteral("domain")] = domain;
+    if (!jsKey.isEmpty()) obj[QStringLiteral("amapJsKey")] = jsKey;
+    if (!webKey.isEmpty()) obj[QStringLiteral("amapWebKey")] = webKey;
+    QFile outf(configPath);
+    if (outf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        outf.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+        outf.close();
+    }
+    loadConfig();
+    cxxReloadMap();
+    return QStringLiteral("ok");
+}
+
+void WebView2Item::cxxReloadMap()
+{
+    if (!m_webBrowser) return;
+    QString htmlDir = QDir::tempPath() + QStringLiteral("/MapDemoHtml");
+    QString filePath = htmlDir + QStringLiteral("/map.html");
+    QFile::remove(filePath);
+    setUrl(m_url);
+}
+
+QString WebView2Item::cxxGetConfig()
+{
+    QString configPath = dataDir() + QStringLiteral("/config.json");
+    QFile f(configPath);
+    if (f.open(QIODevice::ReadOnly)) {
+        QByteArray data = f.readAll();
+        f.close();
+        return QString::fromUtf8(data);
+    }
+    return QStringLiteral("{}");
 }
 
 void WebView2Item::releaseBrowserFocus()
@@ -343,16 +394,27 @@ void WebView2Item::pollBridge()
 
 void WebView2Item::cxxGeocode(const QString &name, int which)
 {
-    if (m_webServiceKey.isEmpty()) return;
+    if (m_webServiceKey.isEmpty()) {
+        qDebug() << "[Geocode] Web Service Key 为空";
+        return;
+    }
     QString url = QStringLiteral(
         "https://restapi.amap.com/v3/geocode/geo?key=%1&address=%2&output=json&city="
     ).arg(m_webServiceKey, QUrl::toPercentEncoding(name));
 
     QNetworkReply *reply = m_nam->get(QNetworkRequest(QUrl(url)));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, which]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, name, which]() {
         QByteArray data = reply->readAll();
         QJsonDocument doc = QJsonDocument::fromJson(data);
-        QJsonArray geocodes = doc.object()[QStringLiteral("geocodes")].toArray();
+        QJsonObject root = doc.object();
+        if (root[QStringLiteral("status")].toString() != QStringLiteral("1")) {
+            QString info = root[QStringLiteral("info")].toString();
+            qDebug() << "[Geocode] API 错误:" << info << "key:" << m_webServiceKey;
+            emit geocodeResult(0, 0, name, which);
+            reply->deleteLater();
+            return;
+        }
+        QJsonArray geocodes = root[QStringLiteral("geocodes")].toArray();
         if (!geocodes.isEmpty()) {
             QJsonObject g = geocodes[0].toObject();
             QString loc = g[QStringLiteral("location")].toString();
@@ -360,6 +422,9 @@ void WebView2Item::cxxGeocode(const QString &name, int which)
             double lng = loc.section(QLatin1Char(','), 0, 0).toDouble();
             double lat = loc.section(QLatin1Char(','), 1, 1).toDouble();
             emit geocodeResult(lng, lat, addr, which);
+        } else {
+            qDebug() << "[Geocode] 无结果 for" << name;
+            emit geocodeResult(0, 0, name, which);
         }
         reply->deleteLater();
     });
@@ -367,7 +432,10 @@ void WebView2Item::cxxGeocode(const QString &name, int which)
 
 void WebView2Item::cxxReGeocode(double lng, double lat, int which)
 {
-    if (m_webServiceKey.isEmpty()) return;
+    if (m_webServiceKey.isEmpty()) {
+        qDebug() << "[ReGeocode] Web Service Key 为空";
+        return;
+    }
     QString url = QStringLiteral(
         "https://restapi.amap.com/v3/geocode/regeo?key=%1&location=%2,%3&radius=1000&extensions=all&output=json"
     ).arg(m_webServiceKey).arg(lng, 0, 'f', 6).arg(lat, 0, 'f', 6);
@@ -377,6 +445,17 @@ void WebView2Item::cxxReGeocode(double lng, double lat, int which)
         QByteArray data = reply->readAll();
         QJsonDocument doc = QJsonDocument::fromJson(data);
         QJsonObject root = doc.object();
+        if (root[QStringLiteral("status")].toString() != QStringLiteral("1")) {
+            QString info = root[QStringLiteral("info")].toString();
+            qDebug() << "[ReGeocode] API 错误:" << info << "key:" << m_webServiceKey;
+            if (which == -1) {
+                executeScript(QStringLiteral("setTooltipName('查询失败')"));
+            } else {
+                emit geocodeResult(lng, lat, QStringLiteral("查询失败"), which);
+            }
+            reply->deleteLater();
+            return;
+        }
         QJsonObject regeocode = root[QStringLiteral("regeocode")].toObject();
         QJsonArray pois = regeocode[QStringLiteral("pois")].toArray();
         QString name;
@@ -526,7 +605,8 @@ void WebView2Item::cxxWeather(const QString &city)
 
 void WebView2Item::cxxSaveAnnotations(const QString &json)
 {
-    QFile f(QCoreApplication::applicationDirPath() + QStringLiteral("/annotations.json"));
+    QDir().mkpath(dataDir());
+    QFile f(dataDir() + QStringLiteral("/annotations.json"));
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         f.write(json.toUtf8());
         f.close();
@@ -535,7 +615,7 @@ void WebView2Item::cxxSaveAnnotations(const QString &json)
 
 QString WebView2Item::cxxLoadAnnotations()
 {
-    QFile f(QCoreApplication::applicationDirPath() + QStringLiteral("/annotations.json"));
+    QFile f(dataDir() + QStringLiteral("/annotations.json"));
     if (f.open(QIODevice::ReadOnly))
         return QString::fromUtf8(f.readAll());
     return QString();
@@ -552,7 +632,7 @@ QString WebView2Item::cxxImportImage(const QString &srcUrl)
     if (ext != "jpg" && ext != "jpeg" && ext != "png" && ext != "bmp" && ext != "gif")
         return {};
 
-    QString dir = QCoreApplication::applicationDirPath() + QStringLiteral("/images");
+    QString dir = dataDir() + QStringLiteral("/images");
     QDir().mkpath(dir);
     QString uuid = QUuid::createUuid().toString(QUuid::WithoutBraces).left(8);
     QString destName = uuid + QStringLiteral(".") + ext;
@@ -608,7 +688,7 @@ QString WebView2Item::cxxOpenFileDialog()
     img.save(&buf2, ext == QStringLiteral("png") ? "PNG" : "JPEG", ext == QStringLiteral("png") ? -1 : 75);
     buf2.close();
 
-    QString dir = QCoreApplication::applicationDirPath() + QStringLiteral("/images");
+    QString dir = dataDir() + QStringLiteral("/images");
     QDir().mkpath(dir);
     QString uuid = QUuid::createUuid().toString(QUuid::WithoutBraces).left(8);
     QString destName = uuid + QStringLiteral(".") + ext;
@@ -628,12 +708,12 @@ QString WebView2Item::cxxOpenFileDialog()
 
 QString WebView2Item::cxxImageFullPath(const QString &relPath)
 {
-    return QCoreApplication::applicationDirPath() + QStringLiteral("/") + relPath;
+    return dataDir() + QStringLiteral("/") + relPath;
 }
 
 QString WebView2Item::cxxReadImageBase64(const QString &relPath)
 {
-    QString fullPath = QCoreApplication::applicationDirPath() + QStringLiteral("/") + relPath;
+    QString fullPath = dataDir() + QStringLiteral("/") + relPath;
     QFile f(fullPath);
     if (!f.open(QIODevice::ReadOnly))
         return {};

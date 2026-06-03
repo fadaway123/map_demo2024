@@ -4,12 +4,13 @@ import QtQuick.Layouts
 import map_demo2024
 
 ApplicationWindow {
-    width: 1200
-    height: 800
+    width: 1800
+    height: 1200
     visible: true
     title: "LIUNIAN的个人化地图"
 
     readonly property double earthRadius: 6371
+    readonly property double px: 1.5
     property bool autoCalc: true
     property bool readyCalc: false
     property string pendingText: ""
@@ -172,6 +173,7 @@ ApplicationWindow {
             webView.cxxReGeocode(lng, lat, 1)
         }
         updateReadyCalc()
+        if (readyCalc) tryCalcDist()
     }
 
     function applyResult(lng, lat, name, which) {
@@ -528,16 +530,16 @@ ApplicationWindow {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 2
+        spacing: 3
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.margins: 6
-            spacing: 6
+            Layout.margins: 9
+            spacing: 9
 
             Button { text: "添加测试标记"; onClicked: webView.executeScript("addMarker(114.305392, 30.5928, '武汉');") }
             Button { text: "绘制轨迹"; onClicked: webView.executeScript("drawGreenPath([[114.305392, 30.5928], [114.315392, 30.6028], [114.325392, 30.5928]]);") }
-            Button { text: "移动到北京"; onClicked: webView.executeScript("map.setCenter([116.397428, 39.90923]);") }
+            Button { text: "使用准备"; onClicked: setupDialog.open() }
 
             Item { Layout.fillWidth: true }
 
@@ -585,10 +587,10 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.leftMargin: 6
             Layout.rightMargin: 6
-            rowSpacing: 4
+            rowSpacing: 6
 
             Label { text: "起点 A:"; font.bold: true }
-            Label { text: "名称"; font.pixelSize: 11; color: "gray"; Layout.fillWidth: true }
+            Label { text: "名称"; font.pixelSize: 16; color: "gray"; Layout.fillWidth: true }
             TextField {
                 id: nameA_field
                 Layout.preferredWidth: 80
@@ -710,6 +712,17 @@ ApplicationWindow {
                 implicitWidth: 48
                 onClicked: webView.cxxPlaceSearch(searchInput.text)
             }
+        }
+
+        Label {
+            id: searchErrorLabel
+            visible: searchPanelVisible && text.length > 0
+            Layout.fillWidth: true
+            Layout.leftMargin: 6
+            Layout.rightMargin: 6
+            color: "red"
+            font.pixelSize: 11
+            wrapMode: Text.WordWrap
         }
 
         Rectangle {
@@ -1161,10 +1174,13 @@ ApplicationWindow {
 
                 onPlaceSearchResult: {
                     searchResults = results
+                    searchErrorLabel.text = results.length > 0 ? "" : "无结果"
+                    searchErrorLabel.color = results.length > 0 ? "transparent" : "gray"
                 }
 
                 onPlaceSearchError: {
-                    console.log("搜索错误:", message)
+                    searchErrorLabel.text = message
+                    searchErrorLabel.color = "red"
                 }
 
                 onRouteSearchResult: {
@@ -1659,6 +1675,96 @@ ApplicationWindow {
                 enabled: text.length > 0
                 Layout.fillWidth: true
                 onClicked: close()
+            }
+        }
+    }
+
+    Dialog {
+        id: setupDialog
+        title: "使用准备 — 配置 API Key 与域名"
+        standardButtons: Dialog.Close
+        modal: true
+        width: 480
+        height: 400
+        onVisibleChanged: {
+            if (visible) {
+                var cfg = webView.cxxGetConfig()
+                var obj = JSON.parse(cfg)
+                domainField.text = obj.domain || ""
+                jsKeyField.text = obj.amapJsKey || ""
+                webKeyField.text = obj.amapWebKey || ""
+                var valid = webView.cxxIsConfigValid()
+                configStatus.text = valid ? "当前配置有效" : "尚未配置，请按下方步骤申请 Key"
+                configStatus.color = valid ? "green" : "#E65100"
+            }
+        }
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 10
+
+            Label { text: "请在高德开放平台完成以下准备："; font.bold: true; font.pixelSize: 14 }
+
+            Label {
+                text: "1. 登录 console.amap.com → 应用管理 → 创建应用\n"
+                    + "2. 添加 JS API（Web端）和 Web Service API 两种 Key\n"
+                    + "3. 在 JS API 的白名单中填写你的域名（如 example.com）\n"
+                    + "4. 将下方信息复制粘贴后点击保存"
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+                color: "#555"
+            }
+
+            Label {
+                id: configStatus
+                Layout.fillWidth: true
+                font.pixelSize: 12
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+
+            GridLayout {
+                columns: 2
+                columnSpacing: 8
+                rowSpacing: 6
+                Layout.fillWidth: true
+
+                Label { text: "白名单域名:" }
+                TextField {
+                    id: domainField
+                    Layout.fillWidth: true
+                    placeholderText: "example.com"
+                }
+
+                Label { text: "JS API Key:" }
+                TextField {
+                    id: jsKeyField
+                    Layout.fillWidth: true
+                    placeholderText: "输入 JS API Key（Web端）"
+                }
+
+                Label { text: "Web Service Key:" }
+                TextField {
+                    id: webKeyField
+                    Layout.fillWidth: true
+                    placeholderText: "输入 Web Service Key"
+                }
+            }
+
+            Item { Layout.fillHeight: true }
+
+            Button {
+                text: "保存配置"
+                Layout.fillWidth: true
+                highlighted: true
+                onClicked: {
+                    var ret = webView.cxxSaveConfig(domainField.text, jsKeyField.text, webKeyField.text)
+                    if (ret === "ok") {
+                        configStatus.text = webView.cxxIsConfigValid() ? "配置已保存，地图将重新加载" : "Key 不完整，请填写所有字段"
+                        configStatus.color = webView.cxxIsConfigValid() ? "green" : "#E65100"
+                        setupDialog.close()
+                    }
+                }
             }
         }
     }

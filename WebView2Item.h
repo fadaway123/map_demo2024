@@ -52,6 +52,10 @@ public slots:
     Q_INVOKABLE QString cxxOpenFileDialog();
     Q_INVOKABLE QString cxxImageFullPath(const QString &relPath);
     Q_INVOKABLE QString cxxReadImageBase64(const QString &relPath);
+    Q_INVOKABLE QString cxxSaveConfig(const QString &domain, const QString &jsKey, const QString &webKey);
+    Q_INVOKABLE void cxxReloadMap();
+    Q_INVOKABLE QString cxxGetConfig();
+    Q_INVOKABLE bool cxxIsConfigValid();
 
 signals:
     void urlChanged();
