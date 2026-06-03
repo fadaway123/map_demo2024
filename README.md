@@ -1,54 +1,32 @@
-# map_demo2024
-
-A desktop map annotation tool powered by **Qt 6 + AMap (高德地图) JS API + WebView2**.
-
-Mark locations, draw paths, add notes and images on an interactive map — all data persisted locally as JSON.
-
-## Features
-
-- Click to place annotations with custom labels and tags
-- Path drawing with multi-segment lines
-- Image attachment per annotation / path point
-- Tag-based filtering and clean-up
-- Weather query, geocoding, place search, route planning
-- Configurable AMap API keys via external JSON file
-
-## Dependencies
-
-| Component | Version | Notes |
-|---|---|---|
-| Qt | 6.9.3 | Core, Quick, Network (MinGW 64-bit) |
-| MinGW | 13.1.0 | Bundled with Qt installer |
-| WebView2 Runtime | Any | Ships with Windows 11 / Edge; or [download](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) |
-| AMap API Key | — | Free tier at [AMap Console](https://console.amap.com/) |
-
-## Build
-
-```bash
-cmake -B build/release -DCMAKE_BUILD_TYPE=Release
-cmake --build build/release --parallel
-```
-
-## Setup
-
-1. Go to [AMap Console](https://console.amap.com/) → 应用管理 → 我的应用 → 创建新应用
-2. Add two API types:
-   - **JS API** (Web端) — for the map view
-   - **Web Service API** — for geocoding / search / weather / routing
-3. Launch the application once — it auto-creates `config.json` at:
-   - Windows: `%APPDATA%/map_demo2024/config.json`
-4. Open `config.json` and fill in your keys:
-   ```json
-   {
-       "amapJsKey": "your_js_api_key_here",
-       "amapWebKey": "your_web_service_key_here"
-   }
-   ```
-5. Restart the application.
-
-> Your API keys stay on your machine. The project uses placeholders in source code;
-> keys are read from the local config file only.
-
-## License
-
-MIT
+LIUNIAN的个人化地图，一个轻量，注重隐私的个人私有地图应用
+利用基于经纬查找的逆地理编码功能实现对由于商业和法律原因无法查找到的个人化地点进行自定义地图编辑，路径导航和本地持久化数据保存
+应用平台：Windows(注意，目前作者本人进行的测试仅试过在64位系统上应用，版本为11，但鉴于技术栈，应该可以实现版本兼容)##未来会做小程序迁移和插件化##
+核心功能：
+自定义地点——可以标注并显示任何地方，注意，任何地方。并编辑对应的属性如加入图片，添加备注等
+个人化路径——绘制你想要的最佳路径，无论导航是否存在，记录小众路线和个人捷径
+本地化——所有的个性化内容保存在你的设备里，实现长久记忆和隐私保护
+注重隐私数据保护——你可以通过我的内置应用程序监视应用本身的所有进程，同时不与任何网络服务器交互你的个人数据
+技术框架：
+桌面开发框架：QT6.9.3 基于MinGW64-bit kit套件，利用了CMake3.30.5（QT）
+UI渲染，QML布局，signal槽函数传递，控件创建
+地图engine：AMap JS API v1.4.15 也就是高德开放平台对应的个人开发者API
+瓦片地图的显示，标注，折线，地理编码等基本功能
+浏览器：WebView2(IE IWeBrowser2/IDispatch)
+利用JS的桥接机制进行C++后端和html前端数据的交互，html网页地图为本地嵌入到QT中
+构建：CMake3.30.5(QT),MinGW 13.1.0
+实现跨平台的编译与构建
+HTTP:Qt Network(QNetworkAcessManager)
+调用高德WebServiceAPI(web服务)实现POI查找，逆地理编码，天气查询，导航等功能
+setup安装包:Inno Setup 7
+数据储存方法:JSON(QJsonDocument)native_style 本地储存
+数据持久化应用，减少隐私泄露和可能的违规行为
+具体使用说明在installer里面(对了，那个封面是我的小米，她是最可爱的小狗！！)
+未来计划：
+优化现有功能，特别是UI交互部分
+加入天气图层和相应的小型加权计算模块
+URL scheme一键唤醒的插件化形态
+特别申明：
+本项目基于 [MIT 许可证](LICENSE) 开源。你可以自由使用、修改和分发代码，但不得用于商业盈利目的。详情请见 `LICENSE` 文件。
+作者本人为大一学生，技术力比较有限，项目主要目的是锻炼个人能力，反馈可以发到邮箱zwy2006827@163.com欢迎交流和指导
+##感谢高德开放平台(http://lbs.amap.com/)的API提供,以及所有帮过我的平台或个人##
+##特别鸣谢中烟公司，利群和泰山挺有性价比的##
