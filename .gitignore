@@ -1,0 +1,35 @@
+# Build
+build/
+*.exe
+*.dll
+*.a
+*.lib
+*.exp
+*.pdb
+*.ilk
+
+# Runtime data
+annotations.json
+config.json
+all_source_code.txt
+
+# Qt / QML cache
+.qmlc
+.jsc
+*.moc
+*.rcc
+*_autogen/
+
+# IDE
+.qtcreator/
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+*.autogen/
+*.cmake
+Makefile
+CMakeUserPresets.json
+
+# OS
+Thumbs.db
+.DS_Store

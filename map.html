@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高德地图</title>
+    <style>
+        * { margin: 0; padding: 0; }
+        html, body, #container { width: 100%; height: 100%; }
+        #mapTooltip {
+            position: fixed; z-index: 9999; pointer-events: none;
+            background: rgba(0,0,0,0.75); color: #fff;
+            padding: 6px 10px; border-radius: 4px;
+            font-size: 12px; line-height: 1.6;
+            font-family: "Microsoft YaHei", sans-serif;
+            white-space: nowrap;
+        }
+        #mapTooltip .coords { color: #4FC3F7; font-weight: bold; }
+        #mapTooltip .name { color: #fff; }
+
+        #weatherContainer {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none; z-index: 998;
+            overflow: hidden;
+        }
+        #lightningOverlay {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none; z-index: 999;
+            background: transparent;
+        }
+        #overcastOverlay {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none; z-index: 998;
+            background: rgba(150,150,160,0.12);
+            display: none;
+        }
+        .weather-particle { position: absolute; pointer-events: none; }
+
+        .rain-particle {
+            width: 2px; height: 12px;
+            background: rgba(100,170,255,0.5);
+            animation: rainFall 0.55s linear infinite;
+        }
+        @keyframes rainFall {
+            0% { transform: translateY(0); opacity: 0.6; }
+            100% { transform: translateY(100vh); opacity: 0.2; }
+        }
+
+        .snow-particle {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: rgba(255,255,255,0.85);
+            animation: snowFall 3.5s ease-in-out infinite;
+        }
+        @keyframes snowFall {
+            0% { transform: translateY(0) translateX(0); opacity: 0.6; }
+            50% { transform: translateY(50vh) translateX(15px); opacity: 1; }
+            100% { transform: translateY(100vh) translateX(-8px); opacity: 0.2; }
+        }
+
+        .fog-particle {
+            width: 100px; height: 50px; border-radius: 50%;
+            background: rgba(200,200,200,0.12);
+            animation: fogDrift 25s linear infinite;
+        }
+        @keyframes fogDrift {
+            0% { transform: translateX(-30px); opacity: 0.15; }
+            50% { opacity: 0.4; }
+            100% { transform: translateX(30px); opacity: 0.1; }
+        }
+
+        .cloud-particle {
+            width: 90px; height: 35px; border-radius: 50%;
+            background: rgba(180,180,185,0.18);
+            animation: cloudDrift 18s linear infinite;
+        }
+        @keyframes cloudDrift {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(60px); }
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div id="weatherContainer"></div>
+    <div id="lightningOverlay"></div>
+    <div id="overcastOverlay"></div>
+    <div id="mapTooltip" style="display:none">
+        <div class="coords" id="tipCoords">--</div>
+        <div class="name" id="tipName">查询中...</div>
+    </div>
+    <div id="__evt" style="display:none"></div>
+    <script src="https://webapi.amap.com/maps?v=1.4.15&key=__AMAP_JS_KEY__&plugin=AMap.Marker,AMap.Polyline"></script>
+    <script>
+        if (!window.console) window.console = { log: function(){}, warn: function(){}, error: function(){} };
+
+        window.onerror = function(msg, url, line) {
+            try { document.getElementById('__evt').innerText = 'jserr:' + (msg || '') + '|' + (line || 0); } catch(e) {}
+        };
+
+        var map = new AMap.Map('container', {
+            zoom: 11,
+            center: [114.305392, 30.5928]
+        });
+        map.setStatus({ doubleClickZoom: false });
+
+        function setMapDragEnabled(enabled) {
+            map.setStatus({ dragEnable: enabled, doubleClickZoom: false });
+        }
+
+        var markers = [];
+        var smallMarkers = [];
+        var lines = [];
+        var searchMarkers = [];
+        var searchLines = [];
+        var navMarkers = [];
+        var navLines = [];
+        var _mouseLngLat = {lng: 114.305392, lat: 30.5928};
+        var _tipTimer = null;
+        var _tipEl = document.getElementById('mapTooltip');
+        var _tipCoords = document.getElementById('tipCoords');
+        var _tipName = document.getElementById('tipName');
+        var _regeoEnabled = false;
+
+        document.getElementById('container').addEventListener('mousemove', function(e) {
+            var rect = this.getBoundingClientRect();
+            var pixel = new AMap.Pixel(e.clientX - rect.left, e.clientY - rect.top);
+            var ll = map.containerToLngLat(pixel);
+            _mouseLngLat.lng = ll.getLng();
+            _mouseLngLat.lat = ll.getLat();
+            _tipCoords.textContent = ll.getLng().toFixed(6) + ', ' + ll.getLat().toFixed(6);
+            _tipEl.style.display = 'block';
+            _tipEl.style.left = (e.clientX + 15) + 'px';
+            _tipEl.style.top = (e.clientY - 10) + 'px';
+            clearTimeout(_tipTimer);
+            _tipTimer = setTimeout(function() {
+                var ll2 = _mouseLngLat;
+                var annotMatch = '';
+                for (var i = 0; i < annotationData.length; i++) {
+                    var a = annotationData[i];
+                    var dx = a.lng - ll2.lng;
+                    var dy = a.lat - ll2.lat;
+                    var d = dx * dx + dy * dy;
+                    if (d < 0.000004) {
+                        annotMatch = a.title;
+                        if (a.note) annotMatch += ' - ' + a.note;
+                        break;
+                    }
+                }
+                if (annotMatch) {
+                    _tipName.textContent = annotMatch;
+                } else if (_regeoEnabled) {
+                    _tipName.textContent = '查询中...';
+                    document.getElementById('__evt').innerText = 'regeo:' + ll2.lng + ',' + ll2.lat;
+                } else {
+                    _tipName.textContent = '—';
+                }
+            }, 500);
+        });
+
+        function setRegeoMode(enabled) {
+            _regeoEnabled = enabled;
+            if (!enabled) _tipName.textContent = '—';
+        }
+
+        function addMarker(lng, lat, title, color) {
+            var marker = new AMap.Marker({
+                position: [lng, lat],
+                title: title
+            });
+            map.add(marker);
+            markers.push(marker);
+            AMap.event.addListener(marker, 'click', function() {
+                document.getElementById('__evt').innerText = 'marker:' + title;
+            });
+            return marker;
+        }
+
+        function clearMarkers() {
+            for (var i = 0; i < markers.length; i++)
+                map.remove(markers[i]);
+            markers = [];
+        }
+
+        function addSmallMarker(lng, lat, color) {
+            var marker = new AMap.Marker({
+                position: [lng, lat],
+                content: '<div style="width:4px;height:4px;background:' + color + ';border:1px solid #fff;"></div>',
+                offset: new AMap.Pixel(-2, -2)
+            });
+            map.add(marker);
+            smallMarkers.push(marker);
+        }
+
+        function clearSmallMarkers() {
+            for (var i = 0; i < smallMarkers.length; i++)
+                map.remove(smallMarkers[i]);
+            smallMarkers = [];
+        }
+
+        function drawPolyline(path) {
+            var polyline = new AMap.Polyline({
+                path: path,
+                strokeColor: '#FF0000',
+                strokeWeight: 4
+            });
+            map.add(polyline);
+            lines.push(polyline);
+            map.setFitView();
+            return polyline;
+        }
+
+        function drawDistanceLine(lng1, lat1, lng2, lat2) {
+            var line = new AMap.Polyline({
+                path: [[lng1, lat1], [lng2, lat2]],
+                strokeColor: '#2196F3',
+                strokeWeight: 3,
+                strokeStyle: 'dashed'
+            });
+            map.add(line);
+            lines.push(line);
+            return line;
+        }
+
+        function clearLines() {
+            for (var i = 0; i < lines.length; i++)
+                map.remove(lines[i]);
+            lines = [];
+        }
+
+        AMap.event.addListener(map, 'click', function(e) {
+            document.getElementById('__evt').innerText = 'click:' + e.lnglat.getLng() + ',' + e.lnglat.getLat();
+        });
+
+        AMap.event.addListener(map, 'dblclick', function(e) {
+            document.getElementById('__evt').innerText = 'dbl:' + e.lnglat.getLng() + ',' + e.lnglat.getLat();
+        });
+
+        function drawGreenPath(path) {
+            var polyline = new AMap.Polyline({
+                path: path,
+                strokeColor: '#4CAF50',
+                strokeWeight: 5,
+                strokeOpacity: 0.9
+            });
+            map.add(polyline);
+            lines.push(polyline);
+            map.setFitView();
+            return polyline;
+        }
+
+        function addSearchMarker(lng, lat) {
+            var marker = new AMap.Marker({
+                position: [lng, lat],
+                content: '<div style="width:8px;height:8px;background:#1565C0;border:2px solid #fff;border-radius:50%;"></div>',
+                offset: new AMap.Pixel(-4, -4)
+            });
+            map.add(marker);
+            searchMarkers.push(marker);
+        }
+
+        function drawBlackPath(path) {
+            var polyline = new AMap.Polyline({
+                path: path,
+                strokeColor: '#000000',
+                strokeWeight: 4,
+                strokeOpacity: 0.8
+            });
+            map.add(polyline);
+            searchLines.push(polyline);
+            map.setFitView();
+        }
+
+        function clearSearch() {
+            for (var i = 0; i < searchMarkers.length; i++)
+                map.remove(searchMarkers[i]);
+            searchMarkers = [];
+            for (var i = 0; i < searchLines.length; i++)
+                map.remove(searchLines[i]);
+            searchLines = [];
+        }
+
+        function drawNavPath(path) {
+            console.log("drawNavPath called, points:", path.length);
+            var polyline = new AMap.Polyline({
+                path: path,
+                strokeColor: '#F44336',
+                strokeWeight: 5,
+                strokeOpacity: 0.85
+            });
+            map.add(polyline);
+            navLines.push(polyline);
+            map.setFitView();
+        }
+
+        function clearNav() {
+            for (var i = 0; i < navMarkers.length; i++)
+                map.remove(navMarkers[i]);
+            navMarkers = [];
+            for (var i = 0; i < navLines.length; i++)
+                map.remove(navLines[i]);
+            navLines = [];
+        }
+
+        function setTooltipName(name) {
+            _tipName.textContent = name;
+        }
+
+        var annotationMarkers = [];
+        var annotationData = [];
+
+        function addAnnotationMarker(lng, lat, title, note) {
+            var safeTitle = (title || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            var marker = new AMap.Marker({
+                position: [lng, lat],
+                content: '<div style="width:12px;height:12px;background:#FF6F00;border:2px solid #fff;"></div>',
+                offset: new AMap.Pixel(-6, -6),
+                title: safeTitle
+            });
+            var idx = annotationMarkers.length;
+            annotationData.push({ lng: lng, lat: lat, title: title || '', note: note || '' });
+            AMap.event.addListener(marker, 'click', function() {
+                document.getElementById('__evt').innerText = 'annot:' + idx;
+            });
+            map.add(marker);
+            annotationMarkers.push(marker);
+            document.getElementById('__evt').innerText = 'mkr:' + lng + ',' + lat + ',' + annotationMarkers.length;
+        }
+
+        function setAnnotationLabelsVisible(visible) {
+            for (var i = 0; i < annotationMarkers.length; i++) {
+                if (visible) {
+                    annotationMarkers[i].setLabel({
+                        content: (annotationData[i].title || '').replace(/</g,'&lt;').replace(/>/g,'&gt;'),
+                        offset: new AMap.Pixel(16, -6)
+                    });
+                } else {
+                    annotationMarkers[i].setLabel(null);
+                }
+            }
+        }
+
+        function clearAnnotations() {
+            for (var i = 0; i < annotationMarkers.length; i++)
+                map.remove(annotationMarkers[i]);
+            annotationMarkers = [];
+            annotationData = [];
+        }
+
+        function flyTo(lng, lat) {
+            map.setCenter([lng, lat]);
+            map.setZoom(15);
+        }
+
+        var savedPathMarkers = [];
+        var savedPathLines = [];
+
+        function addPathDots(flatArr) {
+            try {
+                var arr = flatArr;
+                if (typeof flatArr === 'string') arr = JSON.parse(flatArr);
+                for (var i = 0; i < arr.length; i += 2) {
+                    var m = new AMap.Marker({
+                        position: [arr[i], arr[i + 1]],
+                        content: '<div style="width:6px;height:6px;background:#9C27B0;border:1px solid #fff;"></div>',
+                        offset: new AMap.Pixel(-3, -3)
+                    });
+                    map.add(m);
+                    savedPathMarkers.push(m);
+                }
+            } catch(e) {
+                document.getElementById('__evt').innerText = 'jserr:addPathDots:' + (e.message || e);
+            }
+        }
+
+        function addPathPolyline(flatArr) {
+            try {
+                var arr = flatArr;
+                if (typeof flatArr === 'string') arr = JSON.parse(flatArr);
+                var path = [];
+                for (var i = 0; i < arr.length; i += 2)
+                    path.push([arr[i], arr[i + 1]]);
+                var polyline = new AMap.Polyline({
+                    path: path,
+                    strokeColor: '#9C27B0',
+                    strokeWeight: 3,
+                    strokeOpacity: 0.7
+                });
+                map.add(polyline);
+                savedPathLines.push(polyline);
+            } catch(e) {
+                document.getElementById('__evt').innerText = 'jserr:addPathPolyline:' + (e.message || e);
+            }
+        }
+
+        function clearSavedPathMarkers() {
+            try {
+                for (var i = savedPathMarkers.length - 1; i >= 0; i--)
+                    map.remove(savedPathMarkers[i]);
+                savedPathMarkers = [];
+            } catch(e) {
+                document.getElementById('__evt').innerText = 'jserr:clearSavedPathMarkers:' + (e.message || e);
+            }
+            try {
+                for (var i = savedPathLines.length - 1; i >= 0; i--)
+                    map.remove(savedPathLines[i]);
+                savedPathLines = [];
+            } catch(e) {
+                document.getElementById('__evt').innerText = 'jserr:clearSavedPathMarkers:lines:' + (e.message || e);
+            }
+        }
+
+        function reportPathMarkerCount() {
+            document.getElementById('__evt').innerText = 'pathcnt:' + savedPathMarkers.length;
+        }
+
+        var weatherActive = 'none';
+        var weatherParticles = [];
+        var lightningTimer = null;
+        var lightningOverlayEl = document.getElementById('lightningOverlay');
+        var overcastOverlayEl = document.getElementById('overcastOverlay');
+        var weatherContainerEl = document.getElementById('weatherContainer');
+
+        function clearWeatherEffect() {
+            weatherActive = 'none';
+            if (lightningTimer) { clearTimeout(lightningTimer); lightningTimer = null; }
+            if (lightningOverlayEl) lightningOverlayEl.style.background = 'transparent';
+            if (overcastOverlayEl) overcastOverlayEl.style.display = 'none';
+            for (var i = 0; i < weatherParticles.length; i++) {
+                var p = weatherParticles[i];
+                if (p && p.parentNode) p.parentNode.removeChild(p);
+            }
+            weatherParticles = [];
+        }
+
+        function spawnParticle(className, left, delay, duration) {
+            var el = document.createElement('div');
+            el.className = 'weather-particle ' + className;
+            el.style.left = (left !== undefined ? left : Math.random() * 100) + '%';
+            el.style.top = '-' + (10 + Math.random() * 20) + 'px';
+            if (delay !== undefined) el.style.animationDelay = delay + 's';
+            if (duration !== undefined) el.style.animationDuration = duration + 's';
+            weatherContainerEl.appendChild(el);
+            weatherParticles.push(el);
+        }
+
+        function startLightning() {
+            function flash() {
+                if (weatherActive !== 'thunderstorm') return;
+                lightningOverlayEl.style.background = 'rgba(255,255,255,0.4)';
+                setTimeout(function() {
+                    lightningOverlayEl.style.background = 'transparent';
+                }, 100);
+                lightningTimer = setTimeout(flash, 2000 + Math.random() * 4000);
+            }
+            flash();
+        }
+
+        function setWeatherEffect(type) {
+            clearWeatherEffect();
+            weatherActive = type;
+            if (type === 'none' || type === 'sunny') return;
+
+            if (type === 'rain') {
+                for (var i = 0; i < 40; i++)
+                    spawnParticle('rain-particle', null, Math.random() * 1.2, 0.45 + Math.random() * 0.25);
+            } else if (type === 'thunderstorm') {
+                for (var i = 0; i < 40; i++)
+                    spawnParticle('rain-particle', null, Math.random() * 1.2, 0.45 + Math.random() * 0.25);
+                startLightning();
+            } else if (type === 'snow') {
+                for (var i = 0; i < 30; i++)
+                    spawnParticle('snow-particle', null, Math.random() * 5, 3 + Math.random() * 2);
+            } else if (type === 'fog') {
+                for (var i = 0; i < 15; i++)
+                    spawnParticle('fog-particle', Math.random() * 120 - 10, Math.random() * 15, 20 + Math.random() * 15);
+            } else if (type === 'cloudy') {
+                for (var i = 0; i < 6; i++)
+                    spawnParticle('cloud-particle', Math.random() * 120 - 10, Math.random() * 8, 15 + Math.random() * 10);
+            } else if (type === 'overcast') {
+                overcastOverlayEl.style.display = 'block';
+            }
+        }
+
+    </script>
+</body>
+</html>
