@@ -12,17 +12,14 @@ find_package(Qt6 6.9.3 REQUIRED COMPONENTS Core Quick Network)
 
 qt_standard_project_setup()
 
-# 【正确顺序1：先创建目标】
+
 qt_add_executable(appmap_demo2024
     main.cpp
     WebView2Item.h
     WebView2Item.cpp
-)
+    ）
 
-# 【正确顺序2：再给目标设置属性】
-# 不需要额外的include目录（exdisp.h等来自Windows SDK）
 
-# QML模块
 qt_add_qml_module(appmap_demo2024
     URI map_demo2024
     VERSION 1.0
