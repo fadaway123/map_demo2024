@@ -59,7 +59,6 @@ WebView2Item::~WebView2Item()
     if (m_webBrowser) {
         m_webBrowser->Stop();
         m_webBrowser->put_Visible(FALSE);
-        // 断开 OLE 容器链接
         IOleObject *ole = nullptr;
         if (SUCCEEDED(m_webBrowser->QueryInterface(IID_IOleObject, (void**)&ole))) {
             ole->Close(OLECLOSE_NOSAVE);
