@@ -20,7 +20,6 @@ static QString extractAmapKey(const QByteArray &html)
     return match.hasMatch() ? match.captured(0) : QString();
 }
 
-// IE11 渲染模式注册表设置
 static void ensureIEMode()
 {
     HKEY hKey;
@@ -96,7 +95,7 @@ void WebView2Item::initializeBrowser()
         return;
     }
 
-    // 创建容器窗口
+    
     WNDCLASSEXW wc = {0};
     wc.cbSize = sizeof(WNDCLASSEXW);
     wc.lpfnWndProc = WndProc;
@@ -111,7 +110,6 @@ void WebView2Item::initializeBrowser()
     }
     SetWindowLongPtrW(m_hwnd, GWLP_USERDATA, (LONG_PTR)this);
 
-    // 创建 IWebBrowser2 控件
     m_clientSite = new ClientSite(this);
     m_external = new ExternalDispatch(this);
     m_eventSink = new BrowserEventSink(this);
@@ -126,7 +124,7 @@ void WebView2Item::initializeBrowser()
     m_webBrowser->put_Visible(TRUE);
     m_webBrowser->put_Silent(TRUE);
 
-    // 嵌入 OLE 控件
+    
     IOleObject *oleObject = nullptr;
     hr = m_webBrowser->QueryInterface(IID_IOleObject, (void**)&oleObject);
     if (FAILED(hr)) {
@@ -137,7 +135,6 @@ void WebView2Item::initializeBrowser()
     oleObject->DoVerb(OLEIVERB_INPLACEACTIVATE, nullptr, m_clientSite, 0, m_hwnd, nullptr);
     oleObject->Release();
 
-    // 订阅 DWebBrowserEvents2
     IConnectionPointContainer *cpc = nullptr;
     if (SUCCEEDED(m_webBrowser->QueryInterface(IID_IConnectionPointContainer, (void**)&cpc))) {
         if (SUCCEEDED(cpc->FindConnectionPoint(DIID_DWebBrowserEvents2, &m_connPoint))) {
@@ -148,7 +145,6 @@ void WebView2Item::initializeBrowser()
 
     m_initialized = true;
 
-    // 延迟导航（等控件就绪）
     QTimer::singleShot(200, this, [this]() {
         if (!m_url.isEmpty())
             setUrl(m_url);
@@ -173,7 +169,6 @@ void WebView2Item::updateBrowserBounds()
     SetWindowPos(m_hwnd, nullptr, r.left, r.top, r.right - r.left, r.bottom - r.top,
                  SWP_NOZORDER | SWP_NOACTIVATE);
 
-    // 通知 OLE 控件调整大小
     IOleInPlaceObject *ipo = nullptr;
     if (SUCCEEDED(m_webBrowser->QueryInterface(IID_IOleInPlaceObject, (void**)&ipo))) {
         RECT cr = {0, 0, r.right - r.left, r.bottom - r.top};
@@ -778,12 +773,8 @@ LRESULT CALLBACK WebView2Item::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     default:
         return DefWindowProcW(hWnd, msg, wParam, lParam);
     }
-    return 0;
-}
-
-// ============================================================================
-// InPlaceFrame — IOleInPlaceFrame (独立类，避免 EnableModeless 冲突)
-// ============================================================================
+    return 0
+        }
 
 HRESULT WebView2Item::InPlaceFrame::QueryInterface(REFIID riid, void **ppv)
 {
@@ -799,7 +790,6 @@ HRESULT WebView2Item::InPlaceFrame::QueryInterface(REFIID riid, void **ppv)
 ULONG WebView2Item::InPlaceFrame::Release()
 {
     ULONG count = --refCount;
-    // 不 delete — 嵌入在 ClientSite 中，生命周期由 ClientSite 管理
     return count;
 }
 
@@ -809,9 +799,6 @@ HRESULT WebView2Item::InPlaceFrame::GetWindow(HWND *phwnd)
     return *phwnd ? S_OK : E_NOTIMPL;
 }
 
-// ============================================================================
-// ClientSite — 多接口宿主
-// ============================================================================
 
 HRESULT WebView2Item::ClientSite::QueryInterface(REFIID riid, void **ppv)
 {
@@ -895,12 +882,8 @@ HRESULT WebView2Item::ClientSite::GetExternal(IDispatch **ppDispatch)
 
 HRESULT WebView2Item::ClientSite::QueryService(REFGUID guidService, REFIID riid, void **ppv)
 {
-    return QueryInterface(riid, ppv);
-}
-
-// ============================================================================
-// ExternalDispatch — JS → C++ 通信
-// ============================================================================
+    return QueryInterface(riid, ppv)
+        }
 
 HRESULT WebView2Item::ExternalDispatch::GetIDsOfNames(REFIID, LPOLESTR *rgszNames, UINT cNames, LCID, DISPID *rgDispId)
 {
@@ -990,9 +973,6 @@ HRESULT WebView2Item::ExternalDispatch::Invoke(
     return E_NOTIMPL;
 }
 
-// ============================================================================
-// BrowserEventSink — 监听导航完成等事件
-// ============================================================================
 
 HRESULT WebView2Item::BrowserEventSink::QueryInterface(REFIID riid, void **ppv)
 {
