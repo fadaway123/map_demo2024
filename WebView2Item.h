@@ -104,7 +104,6 @@ private:
     QString m_configJsKey;
     QString m_webServiceKey;
 
-    // JS → C++ bridge: window.external
     struct ExternalDispatch : IDispatch {
         WebView2Item *self;
         ULONG refCount = 1;
@@ -117,8 +116,6 @@ private:
         HRESULT STDMETHODCALLTYPE GetIDsOfNames(REFIID, LPOLESTR *, UINT, LCID, DISPID *);
         HRESULT STDMETHODCALLTYPE Invoke(DISPID, REFIID, LCID, WORD, DISPPARAMS *, VARIANT *, EXCEPINFO *, UINT *);
     };
-
-    // DWebBrowserEvents2 sink
     struct BrowserEventSink : IDispatch {
         WebView2Item *self;
         ULONG refCount = 1;
@@ -132,7 +129,6 @@ private:
         HRESULT STDMETHODCALLTYPE Invoke(DISPID, REFIID, LCID, WORD, DISPPARAMS *, VARIANT *, EXCEPINFO *, UINT *);
     };
 
-    // IOleInPlaceFrame (separate to avoid EnableModeless conflict)
     struct InPlaceFrame : IOleInPlaceFrame {
         WebView2Item *self = nullptr;
         ULONG refCount = 1;
@@ -153,7 +149,6 @@ private:
         HRESULT STDMETHODCALLTYPE TranslateAccelerator(LPMSG, WORD) { return E_NOTIMPL; }
     };
 
-    // IOleClientSite + IOleInPlaceSite + IDocHostUIHandler
     struct ClientSite : IOleClientSite, IOleInPlaceSite, IDocHostUIHandler, IServiceProvider {
         WebView2Item *self;
         InPlaceFrame frame;
@@ -171,7 +166,6 @@ private:
         HRESULT STDMETHODCALLTYPE OnShowWindow(BOOL) { return S_OK; }
         HRESULT STDMETHODCALLTYPE RequestNewObjectLayout() { return E_NOTIMPL; }
 
-        // IOleInPlaceSite
         HRESULT STDMETHODCALLTYPE GetWindow(HWND *phwnd);
         HRESULT STDMETHODCALLTYPE ContextSensitiveHelp(BOOL) { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE CanInPlaceActivate() { return S_OK; }
@@ -183,9 +177,7 @@ private:
         HRESULT STDMETHODCALLTYPE OnInPlaceDeactivate() { return S_OK; }
         HRESULT STDMETHODCALLTYPE DiscardUndoState() { return S_OK; }
         HRESULT STDMETHODCALLTYPE DeactivateAndUndo() { return S_OK; }
-        HRESULT STDMETHODCALLTYPE OnPosRectChange(LPCRECT);
-
-        // IDocHostUIHandler
+        HRESULT STDMETHODCALLTYPE OnPosRectChange(LPCRECT)
         HRESULT STDMETHODCALLTYPE ShowContextMenu(DWORD, POINT *, IUnknown *, IDispatch *) { return S_OK; }
         HRESULT STDMETHODCALLTYPE GetHostInfo(DOCHOSTUIINFO *pInfo);
         HRESULT STDMETHODCALLTYPE ShowUI(DWORD, IOleInPlaceActiveObject *, IOleCommandTarget *, IOleInPlaceFrame *, IOleInPlaceUIWindow *) { return S_OK; }
@@ -202,7 +194,6 @@ private:
         HRESULT STDMETHODCALLTYPE TranslateUrl(DWORD, LPWSTR, LPWSTR *) { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE FilterDataObject(IDataObject *, IDataObject **) { return E_NOTIMPL; }
 
-        // IServiceProvider
         HRESULT STDMETHODCALLTYPE QueryService(REFGUID guidService, REFIID riid, void **ppvObject);
     };
 
